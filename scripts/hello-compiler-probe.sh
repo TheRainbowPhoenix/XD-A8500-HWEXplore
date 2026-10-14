@@ -20,6 +20,7 @@ else
   fi
   if [ -z "$CC" ]; then echo "COMPILER_MISSING $TOOLCHAIN"; exit 20; fi
   case "$CASE" in
+    native) FLAGS="" ;;
     m3) FLAGS="-mb -m3" ;;
     m4) FLAGS="-mb -m4-nofpu" ;;
     *) FLAGS="-mb -m3" ;;
