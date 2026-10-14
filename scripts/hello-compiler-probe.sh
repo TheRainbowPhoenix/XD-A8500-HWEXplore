@@ -41,4 +41,26 @@ set -x
 "$SDK/tools/bin/elf2d01" -m hlpro "$OUT/hello.elf" "$OUT/hello.d01" || exit 23
 set +x
 file "$OUT/hello.elf" "$OUT/hello.d01"
+# Critical: patched -mexword compiler injects nonstandard startup/linkage.
+# Print the ELF evidence rather than treating a produced .d01 as runnable.
+for util in "${CC%-gcc}-readelf" "${CC%-gcc}-nm" "${CC%-gcc}-objdump"; do
+  command -v "$util" >/dev/null 2>&1 && echo "Found $util" || true
+done
+if command -v readelf >/dev/null 2>&1; then
+  readelf -h "$OUT/hello.elf" > "$OUT/elf-header.txt" || true
+  readelf -SW "$OUT/hello.elf" > "$OUT/elf-sections.txt" || true
+  readelf -sW "$OUT/hello.elf" > "$OUT/elf-symbols.txt" || true
+fi
+if command -v objdump >/dev/null 2>&1; then
+  objdump -d "$OUT/hello.elf" > "$OUT/elf-disasm.txt" 2>&1 || true
+fi
+if command -v "${CC%-gcc}-readelf" >/dev/null 2>&1; then
+  "${CC%-gcc}-readelf" -hSW "$OUT/hello.elf" > "$OUT/target-elf.txt" || true
+fi
+"$CC" -### $FLAGS -nostdlib "$OUT/hello.o" -L"$LIB" -ldataplus -lgraphics -lsh4a -o "$OUT/inspect.elf" > "$OUT/driver-specs.txt" 2>&1 || true
+echo "### ELF entry / defined startup symbols ###"
+grep -E 'Entry point' "$OUT/elf-header.txt" 2>/dev/null || true
+grep -E '(^| )(_start|main)
+echo "BUILD_OK $TOOLCHAIN $CASE"
+ "$OUT/elf-symbols.txt" 2>/dev/null || true
 echo "BUILD_OK $TOOLCHAIN $CASE"
