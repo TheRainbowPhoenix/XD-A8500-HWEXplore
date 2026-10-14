@@ -70,4 +70,32 @@ fi
 echo "### ELF entry / defined startup symbols ###"
 grep -E 'Entry point' "$OUT/elf-header.txt" 2>/dev/null || true
 grep -E "(_start|main)" "$OUT/elf-symbols.txt" 2>/dev/null || true
+# Create isolated on-device add-on packages with a unique five-character
+# dictionary ID; package both regional metadata sets.
+case "$TOOLCHAIN:$CASE" in
+  devkit:legacy) APPID=DVHLO ;;
+  hollyhock:native-link-devkit) APPID=HCLLO ;;
+  hollyhock:native) APPID=HNLL0 ;;
+  hollyhock:m3) APPID=H3LLO ;;
+  hollyhock:m4) APPID=H4LLO ;;
+  gint:m3-link-devkit) APPID=GCLLO ;;
+  gint:m3) APPID=G3LLO ;;
+  gint:m4) APPID=G4LLO ;;
+  *) APPID=PRBLO ;;
+esac
+# Never package missing-entrypoint builds as if they were deployable.
+if [ "$TOOLCHAIN" != devkit ] && [ "${LINK_WITH_DEVKIT:-0}" != 1 ]; then
+  echo "WARNING: raw alternate linker can omit _start / EX-word CRT; inspect before device use."
+fi
+for region in ja cn; do
+  PKG="$OUT/package/$region/$APPID"
+  mkdir -p "$PKG"
+  cp "$OUT/hello.d01" "$PKG/hello.d01"
+  for src in "$ROOT"/html/"$region"/*.htm; do
+    sed -e "s/@APPTITLE/HELLO $TOOLCHAIN $CASE/g" \\
+        -e "s/@APPID/$APPID/g" -e "s/@APPMOD/hello.d01/g" "$src" > "$PKG/$(basename "$src")"
+  done
+  : > "$PKG/fileinfo.cji"
+done
+echo "APPID=$APPID"
 echo "BUILD_OK $TOOLCHAIN $CASE"
