@@ -48,3 +48,42 @@ Artifacts contain raw `hello.elf`, `hello.d01`, linker map, and compiler
 diagnostics where possible. The initial matrix is for compilation/linking
 diagnosis; the next iteration will package installable variant-specific app
 IDs and perform byte-level ELF comparisons for hardware testing.
+
+## Initial CI findings
+
+**From CI run 38647060213**:
+
+- **devkit / legacy** — links and D01 conversion pass; original ELF TEXT begins at 0x00000100.
+- **hollyhock / native** — compiles and converts, but GNU ld warns
+  `cannot find entry symbol _start; defaulting to 8cff0000`;
+  D01 converter reports TEXT beginning at **0x00000080**.
+  This is a *linker/startup fault candidate*, not a valid hardware probe.
+- **hollyhock / native-link-devkit** — compiles with Hollyhock GCC
+  v15.2 target `sh4a_nofpueb-elf`, then links with original patched GCC
+  using `-mb -m3 -mexword -mrenesas`. TEXT begins at **0x00000100**;
+  D01 conversion passes. **The device has not tested this hybrid yet**.
+- Generic `-m3` and `-m4-nofpu` are unsupported by the
+  Hollyhock-specific GCC configuration, so don't use them there.
+- The gint Docker image uses a non-root user; CI installs any missing
+  utilities via `sudo`. Ginn GCC cases remain separate experiments.
+
+The current workflow now packages *isolated* candidate IDs:
+
+| Toolchain | Compilation/link | Add-on ID | Intended usage |
+| --- | --- | --- | --- |
+| patched devkit | patched devkit | `DVHLO` | Hardware control |
+| Hollyhock native | patched devkit | `HCLLO` | **Priority hardware test** |
+| Hollyhock native | Hollyhock ld | `HNLL0` | Diagnostics only; known missing startup |
+| gint m3 | patched devkit | `GCLLO` | Second hardware candidate |
+| gint m3 | gint ld | `G3LLO` | Diagnostics until startup checked |
+| gint m4 | gint ld | `G4LLO` | Diagnostics until startup checked |
+
+These experiments **do not modify** your known working devkit app, and
+they make no claims about runtime stability. Install from the relevant
+artifact's `package/ja/APPID/` folder only after checking the
+artifacts contain a complete D01 + HTML metadata + fileinfo.cji.
+The original prebuilt libdataplus is intentionally held constant.
+
+A successful job is defined by the **BUILD_OK** line, not by the
+overall workflow status: the matrix uses `continue-on-error` to retain
+diagnostics for incompatible compiler variants.
