@@ -1,0 +1,89 @@
+name: EXPERIMENT - EX-word Hello compiler matrix
+
+on:
+  push:
+    branches: [experiment/hello-compiler-matrix]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hello:
+    name: ${{ matrix.toolchain }} / ${{ matrix.flags }}
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: devkit
+            flags: legacy
+            container: ubuntu:24.04
+          - toolchain: hollyhock
+            flags: m3
+            container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
+          - toolchain: hollyhock
+            flags: m4
+            container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
+          - toolchain: gint
+            flags: m3
+            container: ghcr.io/therainbowphoenix/gint-docker:main
+          - toolchain: gint
+            flags: m4
+            container: ghcr.io/therainbowphoenix/gint-docker:main
+    container:
+      image: ${{ matrix.container }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runner prerequisites
+        shell: bash
+        run: |
+          set -eu
+          if ! command -v curl >/dev/null || ! command -v tar >/dev/null || ! command -v file >/dev/null; then
+            apt-get update
+            apt-get install -y curl ca-certificates tar gzip file
+          fi
+      - name: Original SDK libraries and converter
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sdk"
+          curl -fsSL --retry 3 https://github.com/MaxSignal/buildscripts/releases/download/Linux/devkitPro.tar.gz | tar xzf - -C "$RUNNER_TEMP/sdk"
+          echo "DEVKITPRO=$RUNNER_TEMP/sdk/devkitPro" >> "$GITHUB_ENV"
+          test -s "$RUNNER_TEMP/sdk/devkitPro/libdataplus/lib/libdataplus.a"
+      - name: Identify target compiler and inspect flags
+        shell: bash
+        run: |
+          echo "Compiler paths:"
+          command -v sh4a_nofpueb-elf-gcc || true
+          command -v sh-elf-gcc || true
+          ls -l "$DEVKITPRO/devkitSH4/bin/sh-elf-gcc"
+          (sh4a_nofpueb-elf-gcc --version || true) 2>&1 | head -4
+          (sh-elf-gcc --version || true) 2>&1 | head -4
+      - name: Compile/link/convert controlled Hello
+        id: probe
+        shell: bash
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain }}
+          PROBE_CASE: ${{ matrix.flags }}
+        run: |
+          set -o pipefail
+          bash scripts/hello-compiler-probe.sh 2>&1 | tee "probe-${TOOLCHAIN}-${PROBE_CASE}.log"
+      - name: Save build metadata and diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p probe-output
+          cp -f probe-*.log probe-output/ 2>/dev/null || true
+          echo "## ${{ matrix.toolchain }} / ${{ matrix.flags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Probe outcome: ${{ steps.probe.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          find probe-output -type f -printf '%p %s bytes\n' >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Upload probe products and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hello-${{ matrix.toolchain }}-${{ matrix.flags }}
+          path: probe-output/
+          if-no-files-found: warn
