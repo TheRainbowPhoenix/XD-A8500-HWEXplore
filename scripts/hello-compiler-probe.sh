@@ -92,8 +92,7 @@ for region in ja cn; do
   mkdir -p "$PKG"
   cp "$OUT/hello.d01" "$PKG/hello.d01"
   for src in "$ROOT"/html/"$region"/*.htm; do
-    sed -e "s/@APPTITLE/HELLO $TOOLCHAIN $CASE/g" \\
-        -e "s/@APPID/$APPID/g" -e "s/@APPMOD/hello.d01/g" "$src" > "$PKG/$(basename "$src")"
+    sed -e "s/@APPTITLE/HELLO $TOOLCHAIN $CASE/g" -e "s/@APPID/$APPID/g" -e "s/@APPMOD/hello.d01/g" "$src" > "$PKG/$(basename "$src")"
   done
   : > "$PKG/fileinfo.cji"
 done
