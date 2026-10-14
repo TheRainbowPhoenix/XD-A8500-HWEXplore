@@ -20,8 +20,8 @@ else
   fi
   if [ -z "$CC" ]; then echo "COMPILER_MISSING $TOOLCHAIN"; exit 20; fi
   case "$CASE" in
-    native) FLAGS="" ;;
-    m3) FLAGS="-mb -m3" ;;
+    native|native-link-devkit) FLAGS="" ;;
+    m3|m3-link-devkit) FLAGS="-mb -m3" ;;
     m4) FLAGS="-mb -m4-nofpu" ;;
     *) FLAGS="-mb -m3" ;;
   esac
@@ -37,7 +37,16 @@ LIB="$SDK/libdataplus/lib"
 SOURCE="$ROOT/probes/hello.c"
 set -x
 "$CC" $FLAGS -O0 -fno-builtin -I"$INC" -c "$SOURCE" -o "$OUT/hello.o" || exit 21
-"$CC" $FLAGS -nostdlib "$OUT/hello.o" -L"$LIB" -ldataplus -lgraphics -lsh4a -Wl,-Map,"$OUT/hello.map" -o "$OUT/hello.elf" || exit 22
+if [ "${LINK_WITH_DEVKIT:-0}" = 1 ]; then
+  # Counterfactual experiment: alter ONLY the codegen compiler, retain the
+  # working patched devkit link driver, CRT/startup, and EX-word linker specs.
+  LINK_CC="$LEGACY"
+  LINK_FLAGS="-mb -m3 -mexword -mrenesas"
+else
+  LINK_CC="$CC"
+  LINK_FLAGS="$FLAGS"
+fi
+"$LINK_CC" $LINK_FLAGS -nostdlib "$OUT/hello.o" -L"$LIB" -ldataplus -lgraphics -lsh4a -Wl,-Map,"$OUT/hello.map" -o "$OUT/hello.elf" || exit 22
 "$SDK/tools/bin/elf2d01" -m hlpro "$OUT/hello.elf" "$OUT/hello.d01" || exit 23
 set +x
 file "$OUT/hello.elf" "$OUT/hello.d01"
@@ -57,7 +66,7 @@ fi
 if command -v "${CC%-gcc}-readelf" >/dev/null 2>&1; then
   "${CC%-gcc}-readelf" -hSW "$OUT/hello.elf" > "$OUT/target-elf.txt" || true
 fi
-"$CC" -### $FLAGS -nostdlib "$OUT/hello.o" -L"$LIB" -ldataplus -lgraphics -lsh4a -o "$OUT/inspect.elf" > "$OUT/driver-specs.txt" 2>&1 || true
+"$LINK_CC" -### $LINK_FLAGS -nostdlib "$OUT/hello.o" -L"$LIB" -ldataplus -lgraphics -lsh4a -o "$OUT/inspect.elf" > "$OUT/driver-specs.txt" 2>&1 || true
 echo "### ELF entry / defined startup symbols ###"
 grep -E 'Entry point' "$OUT/elf-header.txt" 2>/dev/null || true
 grep -E '(^| )(_start|main)
