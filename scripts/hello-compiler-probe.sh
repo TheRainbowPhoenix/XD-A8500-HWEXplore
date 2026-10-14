@@ -69,7 +69,5 @@ fi
 "$LINK_CC" -### $LINK_FLAGS -nostdlib "$OUT/hello.o" -L"$LIB" -ldataplus -lgraphics -lsh4a -o "$OUT/inspect.elf" > "$OUT/driver-specs.txt" 2>&1 || true
 echo "### ELF entry / defined startup symbols ###"
 grep -E 'Entry point' "$OUT/elf-header.txt" 2>/dev/null || true
-grep -E '(^| )(_start|main)
-echo "BUILD_OK $TOOLCHAIN $CASE"
- "$OUT/elf-symbols.txt" 2>/dev/null || true
+grep -E "(_start|main)" "$OUT/elf-symbols.txt" 2>/dev/null || true
 echo "BUILD_OK $TOOLCHAIN $CASE"
