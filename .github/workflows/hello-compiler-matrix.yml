@@ -22,6 +22,9 @@ jobs:
             flags: legacy
             container: ubuntu:24.04
           - toolchain: hollyhock
+            flags: native
+            container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
+          - toolchain: hollyhock
             flags: m3
             container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
           - toolchain: hollyhock
@@ -43,7 +46,14 @@ jobs:
           set -eu
           if ! command -v curl >/dev/null || ! command -v tar >/dev/null || ! command -v file >/dev/null; then
             apt-get update
-            apt-get install -y curl ca-certificates tar gzip file
+            apt-get install -y curl ca-certificates tar gzip file libmpc3
+          fi
+      - name: Ensure devkitSH4 GCC runtime dependencies
+        shell: bash
+        run: |
+          if [ "${{ matrix.toolchain }}" = devkit ]; then
+            apt-get update
+            apt-get install -y libmpc3 libmpfr6 libgmp10
           fi
       - name: Original SDK libraries and converter
         shell: bash
