@@ -25,11 +25,19 @@ jobs:
             flags: native
             container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
           - toolchain: hollyhock
+            flags: native-link-devkit
+            container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
+            patched_linker: "1"
+          - toolchain: hollyhock
             flags: m3
             container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
           - toolchain: hollyhock
             flags: m4
             container: ghcr.io/classpaddev/hollyhock-3:v2.2.2
+          - toolchain: gint
+            flags: m3-link-devkit
+            container: ghcr.io/therainbowphoenix/gint-docker:main
+            patched_linker: "1"
           - toolchain: gint
             flags: m3
             container: ghcr.io/therainbowphoenix/gint-docker:main
@@ -78,6 +86,7 @@ jobs:
         env:
           TOOLCHAIN: ${{ matrix.toolchain }}
           PROBE_CASE: ${{ matrix.flags }}
+          LINK_WITH_DEVKIT: ${{ matrix.patched_linker || '0' }}
         run: |
           set -o pipefail
           bash scripts/hello-compiler-probe.sh 2>&1 | tee "probe-${TOOLCHAIN}-${PROBE_CASE}.log"
