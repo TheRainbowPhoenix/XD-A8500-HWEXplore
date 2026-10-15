@@ -1,0 +1,47 @@
+name: EXPERIMENT - EX-word breakpoint utility (devkitSH4)
+on:
+  push:
+    branches: [experiment/devkit-breakpoint-utility]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install patched EX-word SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libmpc3 libmpfr6 libgmp10 file
+          mkdir -p "$RUNNER_TEMP/sdk"
+          curl -fsSL --retry 3 https://github.com/MaxSignal/buildscripts/releases/download/Linux/devkitPro.tar.gz | tar xzf - -C "$RUNNER_TEMP/sdk"
+      - name: Build BKPUT and validate packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEVKITPRO="$RUNNER_TEMP/sdk/devkitPro"
+          export DEVKITSH4="$DEVKITPRO/devkitSH4"
+          export PATH="$DEVKITPRO/tools/bin:$DEVKITSH4/bin:$PATH"
+          make -f Makefile.breakpoint clean
+          make -f Makefile.breakpoint app
+          for region in ja cn; do
+            test -s "build-breakpoint/$region/BKPUT/bkput.d01"
+            test -s "build-breakpoint/$region/BKPUT/diction.htm"
+            grep -Fq 'bkput.d01' "build-breakpoint/$region/BKPUT"/inf*.htm
+          done
+          file bkput.elf build-breakpoint/ja/BKPUT/bkput.d01
+          echo "WARNING: compiler success does not mean privileged UBC/DBR operations work on physical EX-word" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: breakpoint-bkput-ja
+          path: build-breakpoint/ja/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: breakpoint-bkput-cn
+          path: build-breakpoint/cn/
+          if-no-files-found: error
