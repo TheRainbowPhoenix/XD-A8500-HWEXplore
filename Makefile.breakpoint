@@ -1,0 +1,31 @@
+.SUFFIXES:
+.DEFAULT_GOAL := app
+ifeq ($(strip $(DEVKITSH4)),)
+$(error DEVKITSH4 must point to original EX-word devkit)
+endif
+include $(DEVKITSH4)/exword_rules
+TARGET := bkput
+MODNAME := bkput
+APPID := BKPUT
+APPTITLE := EXWORD BREAKPOINT
+APPMOD := $(TARGET).d01
+HTMLDIR := html
+BUILDS := ja cn
+OBJECTS := breakpoint/main.o breakpoint/handler_stub.o $(patsubst %.c,%.o,$(wildcard src/libc/*.c)) $(patsubst %.s,%.o,$(wildcard src/libc/*.s))
+LDFLAGS := -Wall -std=gnu17 -nostdlib -L$(DEVKITPRO)/libdataplus/lib -ldataplus -lgraphics -lsh4a
+CFLAGS := -Wall -Wextra -std=gnu17 -fno-builtin -I$(DEVKITPRO)/libdataplus/include -Isrc/libc/include -O0
+ASFLAGS := -Wall -m4-nofpu
+.PHONY: app clean
+.SECONDARY: $(TARGET).d01
+app: $(addprefix build-breakpoint/,$(addsuffix /$(APPID),$(BUILDS)))
+.SECONDEXPANSION:
+build-breakpoint/%/$(APPID): $(TARGET).d01 $$(wildcard $(HTMLDIR)/$$*/*.htm)
+	@mkdir -p "$@"
+	@cp $(TARGET).d01 "$@/$(APPMOD)"
+	@set -e; for f in $(HTMLDIR)/$*/*.htm; do \
+	    sed -e 's/@APPTITLE/$(APPTITLE)/g' -e 's/@APPID/$(APPID)/g' -e 's/@APPMOD/$(APPMOD)/g' "$$f" > "$@/$$(basename "$$f")"; \
+	done
+	@touch "$@/fileinfo.cji"
+$(TARGET).elf: $(OBJECTS)
+clean:
+	@rm -rf build-breakpoint $(OBJECTS) $(TARGET).elf $(TARGET).elf.map $(TARGET).d01
