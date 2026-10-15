@@ -1,5 +1,6 @@
 #include <graphics/color.h>
 #include <graphics/drawing.h>
+#include <graphics/init.h>
 #include <graphics/lcdc.h>
 #include <graphics/sub_lcdc.h>
 #include <graphics/text.h>
@@ -67,6 +68,10 @@ int main(void)
 	struct touch_adc_sample touch;
 	struct touch_i2c_sample i2c_touch;
 
+	/* Program the R61523 window explicitly: bare rendering must not depend on
+	 * the system GUI having configured it before this add-in was entered. */
+	graphics_init(SCREEN_WIDTH, SCREEN_HEIGHT, (void *)0xac200000u);
+	sub_lcdc_init();
 	touch_adc_init();
 	draw_main_paint(main_x, main_y, 1);
 	draw_sub_paint(sub_x, sub_y);
