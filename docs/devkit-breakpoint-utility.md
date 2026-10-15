@@ -12,8 +12,13 @@ runtime. Its white-screen UI uses familiar EX-word `graphics/*` and
 ## Operation
 
 - Starts with **no breakpoint armed**. It draws a plain UI and waits.
-- **S** installs the debug base register (DBR) handler and arms UBC channel 0
-  at a **fixed local test function** inside this app.
+- **J** opens the 8-digit hexadecimal breakpoint address editor, initially
+  filled with the address of the built-in local test function.
+  Q/W/E/R/T/Y/U/I/O/P enter digits 0–9, A–F enter hex digits A–F,
+  Left/Right move between nibbles, Up/Down increase/decrease the nibble,
+  Backspace clears a nibble, Enter accepts, Back cancels.
+- **S** arms UBC channel 0 at the selected *even* instruction address
+  (which may be within an app or OS code; this is not a safety check).
 - **T** executes that local function. If the debug exception works, the
   handler disables channel 0, saves a minimal register snapshot, and
   returns to the UI; **R0** and **PR** are displayed.
@@ -32,8 +37,10 @@ happens back in the ordinary input loop.
   The stock EX-word firmware might reject these operations, instantly
   crash/reboot, or route exceptions differently. We have not verified this
   on the XD-A8500, so **S is dangerous**.
-- This is a *one-local-function* test on purpose: no arbitrary ROM/OS
-  breakpoint address entry, memory writes, or OS interrupt hooks.
+- The local test function is the *default* target, but arbitrary even
+  addresses can now be selected with J. An aligned address is **not**
+  necessarily executable or mapped. Installing a breakpoint in ROM or OS
+  code is much riskier than the local self-test.
 - **This implementation replaces DBR when armed and does not restore the
   old DBR value after disarming.** Do not arm it on a device where another
   debugger/debug infrastructure is installed or expected. It must never
@@ -50,11 +57,11 @@ happens back in the ordinary input loop.
 2. Launch it **without pressing S**. Verify the plain screen stays open
    and Back returns normally. If even startup fails, stop: breakpoint
    hardware cannot be the cause.
-3. Only if willing to risk an immediate reboot, launch it again, press
-   **S** to arm the test and then **T**. Record whether the screen shows
+3. Only if willing to risk an immediate reboot, launch it again, keep
+   the default local target, press **S** to arm the test and then **T**. Record whether the screen shows
    a capture, hangs, or reboots.
-4. Do not attempt ROM/OS breakpoints until the local test has been
-   demonstrated working safely.
+4. Open the **J** editor to choose an OS/app address *only after*
+   the local test has been demonstrated working safely.
 
 The GitHub Actions workflow builds JA/CN installable `BKPUT` packages.
 Passing the CI build **does not validate privileged UBC access or the
