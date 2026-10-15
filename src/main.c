@@ -45,26 +45,40 @@ static void draw_main_paint(uint16_t x, uint16_t y, int bare)
 	set_pen(create_rgb16(255, 40, 220)); draw_rect(x, y, 16, 16);
 	set_pen(create_rgb16(255, 255, 255));
 	render_text(8, SCREEN_HEIGHT - font->height - 8,
-		"Bare boot: ADC=sub  F4=probe I2C  F1=ROM compare");
+		"B: sub pattern  T: I2C probe  C: reset  EXE: ROM compare");
 	if (bare) lcdc_copy_vram(); else ROM_LCD_REFRESH();
 }
 
-static void draw_sub_paint(uint16_t x, uint16_t y)
+static void draw_sub_paint(uint16_t x, uint16_t y, uint8_t pattern)
 {
+	uint16_t row;
 	sub_lcdc_clear(0);
-	sub_lcdc_fill_rect(4, 4, 96, 14, 1);
-	sub_lcdc_fill_rect(108, 4, 96, 14, 1);
-	sub_lcdc_fill_rect(18, 28, 172, 4, 1);
+	/* Bare equivalents of the factory pattern cases 1..5: solid, 8-pixel
+	 * bands, offset bands, border, and crosshair. */
+	if (pattern == 1) sub_lcdc_fill_rect(0, 0, SUB_LCDC_WIDTH, SUB_LCDC_HEIGHT, 1);
+	else if (pattern == 2 || pattern == 3) {
+		for (row = pattern == 2 ? 0 : 4; row < SUB_LCDC_HEIGHT; row += 8)
+			sub_lcdc_fill_rect(0, row, SUB_LCDC_WIDTH, 4, 1);
+	} else if (pattern == 4) {
+		sub_lcdc_fill_rect(0, 0, SUB_LCDC_WIDTH, 2, 1);
+		sub_lcdc_fill_rect(0, SUB_LCDC_HEIGHT - 2, SUB_LCDC_WIDTH, 2, 1);
+		sub_lcdc_fill_rect(0, 0, 2, SUB_LCDC_HEIGHT, 1);
+		sub_lcdc_fill_rect(SUB_LCDC_WIDTH - 2, 0, 2, SUB_LCDC_HEIGHT, 1);
+	} else {
+		sub_lcdc_fill_rect(0, SUB_LCDC_HEIGHT / 2 - 1, SUB_LCDC_WIDTH, 3, 1);
+		sub_lcdc_fill_rect(SUB_LCDC_WIDTH / 2 - 1, 0, 3, SUB_LCDC_HEIGHT, 1);
+	}
 	sub_lcdc_fill_rect(x, y, 10, 10, 1);
 	sub_lcdc_flush();
 }
 
 int main(void)
 {
-	enum panel_target panel = PANEL_MAIN;
 	enum render_mode mode = MODE_BARE;
 	uint16_t main_x = 250, main_y = 220, sub_x = 96, sub_y = 42;
-	int sub_pattern = 4;
+	uint8_t sub_pattern = 4;
+	uint16_t touch_poll_divider = 0;
+	int main_dirty = 1, sub_dirty = 1;
 	struct touch_adc_sample touch;
 	struct touch_i2c_sample i2c_touch;
 
@@ -73,38 +87,38 @@ int main(void)
 	graphics_init(SCREEN_WIDTH, SCREEN_HEIGHT, (void *)0xac200000u);
 	sub_lcdc_init();
 	touch_adc_init();
-	draw_main_paint(main_x, main_y, 1);
-	draw_sub_paint(sub_x, sub_y);
 	while (1) {
 		keypad_read();
 		if (get_key_state(KEY_POWER) || get_key_state(KEY_BACK)) return -2;
-		/* ENTER is deliberately the primary toggle; F1 is a secondary shortcut. */
-		if (get_key_pressed(KEY_ENTER) || get_key_pressed(KEY_FUNC_1)) mode = mode == MODE_SYSTEM ? MODE_BARE : MODE_SYSTEM;
-		if (get_key_pressed(KEY_FUNC_2)) panel = panel == PANEL_MAIN ? PANEL_SUB : PANEL_MAIN;
-		if (get_key_pressed(KEY_FUNC_3)) { sub_pattern = 4; main_x = 250; main_y = 220; sub_x = 96; sub_y = 42; }
-		/* F4 uses the independently reconstructed I2C path once, avoiding
-		 * continuous bus traffic while its physical panel mapping is verified. */
-		if (get_key_pressed(KEY_FUNC_4) && touch_i2c_read(&i2c_touch)) {
+		if (get_key_pressed(KEY_ENTER)) {
+			mode = mode == MODE_SYSTEM ? MODE_BARE : MODE_SYSTEM;
+			main_dirty = 1;
+		}
+		if (get_key_pressed(KEY_CHAR_B)) {
+			sub_pattern = sub_pattern == 5 ? 1 : sub_pattern + 1;
+			sub_dirty = 1;
+		}
+		if (get_key_pressed(KEY_CHAR_C)) {
+			main_x = 250; main_y = 220; sub_x = 96; sub_y = 42;
+			main_dirty = sub_dirty = 1;
+		}
+		if (get_key_pressed(KEY_CHAR_T) && touch_i2c_read(&i2c_touch)) {
 			main_x = (uint16_t)((uint32_t)i2c_touch.x * (SCREEN_WIDTH - 16u) / 4096u);
 			main_y = (uint16_t)((uint32_t)i2c_touch.y * (SCREEN_HEIGHT - 16u) / 4096u);
+			main_dirty = 1;
 		}
-		if (get_key_pressed(KEY_LEFT)) { if (panel == PANEL_SUB && sub_x >= 4) sub_x -= 4; if (panel == PANEL_MAIN && main_x >= 8) main_x -= 8; }
-		if (get_key_pressed(KEY_RIGHT)) { if (panel == PANEL_SUB && sub_x < SUB_LCDC_WIDTH - 14) sub_x += 4; if (panel == PANEL_MAIN && main_x < SCREEN_WIDTH - 24) main_x += 8; }
-		if (get_key_pressed(KEY_UP)) { if (panel == PANEL_SUB && sub_y >= 4) sub_y -= 4; if (panel == PANEL_MAIN && main_y >= 8) main_y -= 8; }
-		if (get_key_pressed(KEY_DOWN)) { if (panel == PANEL_SUB && sub_y < SUB_LCDC_HEIGHT - 14) sub_y += 4; if (panel == PANEL_MAIN && main_y < SCREEN_HEIGHT - 24) main_y += 8; }
-		/* Raw ADC touch drives the bare-panel marker whenever its electrode pairs validate. */
-		if (touch_adc_read(&touch)) {
-			sub_x = (uint16_t)((uint32_t)touch.channel_a * (SUB_LCDC_WIDTH - 10u) / 1024u);
-			sub_y = (uint16_t)((uint32_t)touch.channel_c * (SUB_LCDC_HEIGHT - 10u) / 1024u);
+		if (get_key_pressed(KEY_LEFT) && main_x >= 8) { main_x -= 8; main_dirty = 1; }
+		if (get_key_pressed(KEY_RIGHT) && main_x < SCREEN_WIDTH - 24) { main_x += 8; main_dirty = 1; }
+		if (get_key_pressed(KEY_UP) && main_y >= 8) { main_y -= 8; main_dirty = 1; }
+		if (get_key_pressed(KEY_DOWN) && main_y < SCREEN_HEIGHT - 24) { main_y += 8; main_dirty = 1; }
+		/* Poll the ADC infrequently. A new point performs exactly one sub-LCD
+		 * flush; idle spinning never touches either display bus. */
+		if (++touch_poll_divider == 0 && touch_adc_read(&touch)) {
+			uint16_t x = (uint16_t)((uint32_t)touch.channel_a * (SUB_LCDC_WIDTH - 10u) / 1024u);
+			uint16_t y = (uint16_t)((uint32_t)touch.channel_c * (SUB_LCDC_HEIGHT - 10u) / 1024u);
+			if (x != sub_x || y != sub_y) { sub_x = x; sub_y = y; sub_dirty = 1; }
 		}
-		if (mode == MODE_BARE) {
-			draw_main_paint(main_x, main_y, 1);
-			draw_sub_paint(sub_x, sub_y);
-		} else if (panel == PANEL_MAIN) {
-			draw_main_paint(main_x, main_y, 0);
-		} else {
-			if (get_key_pressed(KEY_ENTER)) sub_pattern = sub_pattern == 7 ? 1 : sub_pattern + 1;
-			ROM_SUBLCD_PATTERN(sub_pattern);
-		}
+		if (main_dirty) { draw_main_paint(main_x, main_y, mode == MODE_BARE); main_dirty = 0; }
+		if (sub_dirty) { draw_sub_paint(sub_x, sub_y, sub_pattern); sub_dirty = 0; }
 	}
 }
