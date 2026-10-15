@@ -88,6 +88,7 @@ _handler_addr:
 .long _BreakpointHandler
 _state_ptr:
 .long _saved_state
+.section .bss
 .balign 4
 _saved_state:
 .space 80
