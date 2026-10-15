@@ -59,7 +59,7 @@ static void arm_breakpoint(void)
     /* Don't arm an odd address or unaligned SH instruction fetch. */
     if (addr & 1u) return;
     /* Writes require privileged mode and may trap on EX-word OS. */
-    __asm__ volatile("ldc %0,dbr" : : "r"(stub_address) : "memory");
+    __asm__ volatile("mov %0,r0\n\t.word 0x40fa" : : "r"(stub_address) : "r0","memory");
     UBC_CBCR=UBC_CBCR_UBDE;
     UBC_CBR0=UBC_CBR_ID;
     UBC_CAR0=addr;
