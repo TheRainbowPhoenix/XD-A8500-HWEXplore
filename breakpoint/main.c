@@ -27,6 +27,8 @@ extern void BreakpointHandlerStub(void);
 static volatile unsigned hits;
 static volatile unsigned armed;
 static volatile unsigned tested;
+static volatile unsigned last_test_hits;
+static unsigned test_attempted;
 static uint32_t breakpoint_address;
 static unsigned edit_mode, digit_cursor;
 static struct CPUState last_state;
@@ -117,14 +119,15 @@ static void render(void)
 {
     char h[9];
     set_pen(create_rgb16(255,255,255));draw_rect(0,0,528,320);
-    set_pen(create_rgb16(20,44,71));render_text(16,12,"BKPUT / SH4A BREAKPOINT TEST");
+    set_pen(create_rgb16(20,44,71));render_text(16,12,"BKPUT / IN-APP UBC DIAGNOSTIC");
     set_pen(create_rgb16(80,101,115));
-    render_text(16,40,"J: SET HEX ADDRESS / S: ARM SELECTED");
-    render_text(16,70,edit_mode?"Q-P:0-9 A-F:HEX  LR:DIGIT":"T: CALL LOCAL TEST  D: DISARM");
-    render_text(16,94,edit_mode?"UP/DN:INCREMENT  ENTER:OK BACK:CANCEL":"BACK / POWER: EXIT (DISARM FIRST)");
+    render_text(16,40,"J: SET ADDRESS  S: ARM  D: DISARM");
+    render_text(16,70,edit_mode?"Q-P:0-9 A-F:HEX  LR:DIGIT":"T: LOCAL SELF-TEST (USE DEFAULT ADDRESS)");
+    render_text(16,94,edit_mode?"UP/DN:INCREMENT  ENTER:OK BACK:CANCEL":"BREAKPOINTS DO NOT SURVIVE APP EXIT");
     set_pen(create_rgb16(24,50,74));
     render_text(16,135,armed?"UBC: ARMED":"UBC: DISARMED");
     render_text(16,157,hits?"HIT REGISTER CAPTURED":"NO BREAKPOINT HIT YET");
+    if(test_attempted) render_text(16,257,last_test_hits ? "SELF-TEST: HIT RECORDED":"SELF-TEST: NO HIT RECORDED");
     hex8(h,breakpoint_address);
     render_text(16,184,"TARGET ADDRESS:");render_text(180,184,h);
     if(edit_mode) render_text(16,201,"EDITING 8 HEX DIGITS - POSITION BELOW");
@@ -132,13 +135,14 @@ static void render(void)
         hex8(h,last_state.r[0]);render_text(16,210,"R0:");render_text(76,210,h);
         hex8(h,last_state.pr);render_text(16,234,"PR:");render_text(76,234,h);
     }
-    render_text(16,282,"UBC PRIVILEGED ACCESS MAY REBOOT!");
+    render_text(16,282,"UBC MMIO MAY REBOOT; NOT PERSISTENT");
     lcdc_copy_vram();
 }
 int main(void)
 {
     uint32_t old=0u, saved=0u;
     hits=armed=tested=0u;
+    test_attempted=0u;last_test_hits=0u;
     breakpoint_address=(uint32_t)(uintptr_t)test_breakpoint_target;
     edit_mode=0u;digit_cursor=0u;
     render();
@@ -187,7 +191,12 @@ int main(void)
             }
             if((pressed&BIT(0))&&!armed&&!(breakpoint_address&1u))
                 arm_breakpoint();
-            if(pressed&BIT(1))test_breakpoint_target();
+            if(pressed&BIT(1)) {
+                unsigned before=hits;
+                test_breakpoint_target();
+                last_test_hits=(hits!=before);
+                test_attempted=1u;
+            }
             if((pressed&BIT(2))&&armed)disarm_breakpoint();
         }
         if(pressed)render();
