@@ -27,6 +27,8 @@ extern void BreakpointHandlerStub(void);
 static volatile unsigned hits;
 static volatile unsigned armed;
 static volatile unsigned tested;
+static uint32_t breakpoint_address;
+static unsigned edit_mode, digit_cursor;
 static struct CPUState last_state;
 static void (* const stub_address)(void) = BreakpointHandlerStub;
 static const char hexdigits[]="0123456789ABCDEF";
@@ -55,7 +57,7 @@ __attribute__((noinline,used)) static void test_breakpoint_target(void)
 
 static void arm_breakpoint(void)
 {
-    uint32_t addr=(uint32_t)(uintptr_t)test_breakpoint_target;
+    uint32_t addr=breakpoint_address;
     /* Don't arm an odd address or unaligned SH instruction fetch. */
     if (addr & 1u) return;
     /* Writes require privileged mode and may trap on EX-word OS. */
@@ -79,20 +81,53 @@ static void hex8(char *o,uint32_t v)
     for(i=0;i<8;i++)o[i]=hexdigits[(v>>(28u-4u*i))&15u];
     o[8]=0;
 }
+static const unsigned keys[] = {
+    KEY_CHAR_S,KEY_CHAR_T,KEY_CHAR_D,KEY_CHAR_J,
+    KEY_LEFT,KEY_RIGHT,KEY_UP,KEY_DOWN,KEY_ENTER,KEY_BACKSPACE,
+    KEY_BACK,KEY_POWER,
+    KEY_CHAR_Q,KEY_CHAR_W,KEY_CHAR_E,KEY_CHAR_R,KEY_CHAR_T,
+    KEY_CHAR_Y,KEY_CHAR_U,KEY_CHAR_I,KEY_CHAR_O,KEY_CHAR_P,
+    KEY_CHAR_A,KEY_CHAR_B,KEY_CHAR_C,KEY_CHAR_D,KEY_CHAR_E,KEY_CHAR_F
+};
+static uint32_t snapshot(void)
+{
+    unsigned i;
+    uint32_t bits=0u;
+    for(i=0u;i<sizeof(keys)/sizeof(keys[0]);i++)
+        if(get_key_state((uint8_t)keys[i])) bits|=1u<<i;
+    return bits;
+}
+#define BIT(n) (1u << (n))
+static void nibble_set(unsigned digit)
+{
+    unsigned shift=(7u-digit_cursor)*4u;
+    breakpoint_address=(breakpoint_address&~(15u<<shift))|
+                       ((digit&15u)<<shift);
+    if(digit_cursor<7u)digit_cursor++;
+}
+static void nibble_delta(unsigned inc)
+{
+    unsigned shift=(7u-digit_cursor)*4u;
+    unsigned value=(breakpoint_address>>shift)&15u;
+    unsigned old=digit_cursor;
+    nibble_set((value+(inc?1u:15u))&15u);
+    digit_cursor=old;
+}
 static void render(void)
 {
     char h[9];
     set_pen(create_rgb16(255,255,255));draw_rect(0,0,528,320);
     set_pen(create_rgb16(20,44,71));render_text(16,12,"BKPUT / SH4A BREAKPOINT TEST");
     set_pen(create_rgb16(80,101,115));
-    render_text(16,40,"LOCAL TARGET ONLY - NO OS PATCH");
-    render_text(16,70,"S: ARM UBC  T: CALL TEST  D: DISARM");
-    render_text(16,94,"BACK / POWER: EXIT (DISARM FIRST)");
+    render_text(16,40,"J: SET HEX ADDRESS / S: ARM SELECTED");
+    render_text(16,70,edit_mode?"Q-P:0-9 A-F:HEX  LR:DIGIT":"T: CALL LOCAL TEST  D: DISARM");
+    render_text(16,94,edit_mode?"UP/DN:INCREMENT  ENTER:OK BACK:CANCEL":"BACK / POWER: EXIT (DISARM FIRST)");
     set_pen(create_rgb16(24,50,74));
     render_text(16,135,armed?"UBC: ARMED":"UBC: DISARMED");
     render_text(16,157,hits?"HIT REGISTER CAPTURED":"NO BREAKPOINT HIT YET");
-    hex8(h,(uint32_t)(uintptr_t)test_breakpoint_target);
+    hex8(h,breakpoint_address);
     render_text(16,184,"TARGET ADDRESS:");render_text(180,184,h);
+    if(edit_mode) render_text(16,201,"EDITING 8 HEX DIGITS - POSITION BELOW");
     if(hits) {
         hex8(h,last_state.r[0]);render_text(16,210,"R0:");render_text(76,210,h);
         hex8(h,last_state.pr);render_text(16,234,"PR:");render_text(76,234,h);
@@ -102,26 +137,60 @@ static void render(void)
 }
 int main(void)
 {
-    unsigned old=0u;
+    uint32_t old=0u, saved=0u;
     hits=armed=tested=0u;
+    breakpoint_address=(uint32_t)(uintptr_t)test_breakpoint_target;
+    edit_mode=0u;digit_cursor=0u;
     render();
     for(;;) {
-        unsigned cur=0u, edge;
+        uint32_t current,pressed;
+        unsigned i;
         volatile unsigned spin;
         keypad_read();
-        if(get_key_state(KEY_CHAR_S))cur|=1u;
-        if(get_key_state(KEY_CHAR_T))cur|=2u;
-        if(get_key_state(KEY_CHAR_D))cur|=4u;
-        if(get_key_state(KEY_BACK)||get_key_state(KEY_POWER))cur|=8u;
-        edge=cur&~old;old=cur;
-        if(edge&8u) {
-            if(armed)disarm_breakpoint();
-            return -2;
+        current=snapshot();
+        pressed=current&~old;old=current;
+        if(edit_mode) {
+            if(pressed&(BIT(10)|BIT(11))) {
+                breakpoint_address=saved;
+                edit_mode=0u;
+            } else if(pressed&BIT(8)) {
+                edit_mode=0u;
+            } else if(pressed&BIT(9)) {
+                nibble_set(0u);
+            } else if(pressed&BIT(4)) {
+                if(digit_cursor>0u)digit_cursor--;
+            } else if(pressed&BIT(5)) {
+                if(digit_cursor<7u)digit_cursor++;
+            } else if(pressed&BIT(6)) {
+                nibble_delta(1u);
+            } else if(pressed&BIT(7)) {
+                nibble_delta(0u);
+            } else {
+                for(i=0u;i<10u;i++) {
+                    if(pressed&BIT(12u+i)) {nibble_set(i);break;}
+                }
+                if(i==10u) {
+                    for(i=0u;i<6u;i++) {
+                        if(pressed&BIT(22u+i)) {nibble_set(i+10u);break;}
+                    }
+                }
+            }
+        } else {
+            if(pressed&(BIT(10)|BIT(11))) {
+                if(armed)disarm_breakpoint();
+                return -2;
+            }
+            if((pressed&BIT(3))&&!armed) {
+                saved=breakpoint_address;
+                edit_mode=1u;
+                digit_cursor=0u;
+            }
+            if((pressed&BIT(0))&&!armed&&!(breakpoint_address&1u))
+                arm_breakpoint();
+            if(pressed&BIT(1))test_breakpoint_target();
+            if((pressed&BIT(2))&&armed)disarm_breakpoint();
         }
-        if(edge&1u)arm_breakpoint();
-        if(edge&2u)test_breakpoint_target();
-        if(edge&4u) {if(armed)disarm_breakpoint();}
-        if(edge)render();
+        if(pressed)render();
         for(spin=0u;spin<25000u;spin++) { }
     }
 }
