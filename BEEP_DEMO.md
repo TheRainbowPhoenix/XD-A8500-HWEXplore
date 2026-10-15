@@ -14,7 +14,7 @@ This demo reproduces the factory ROM's legacy clock-output path:
 
 ## DSP/SPU path (N key)
 
-The **N** key reproduces the newer factory-ROM path. It clears the module-stop and clock-gate bits at `MSTPCR2` (`0xA4150038`), `FSICLKCR` (`0xA4150008`), and `SPUCLKCR` (`0xA415003C`), writes the nine-word buzzer descriptor at `0xFE340000`, writes the start command `0x00100009` to the DSP1 command doorbell at `0xFE3FFD38`, then enables DSP1's completion-event bit at `0xFE3FFD2C`. Releasing N writes stop descriptor `0x08200200` and sends command `0x00100001`.
+The **N** key now invokes the complete newer factory-ROM path. On first use it calls the ROM's SPU2/DSP initializer (`0x80061334`), which releases `MSTPCR2`, FSI and SPU clock gates; resets both DSP cores; DMA-loads their firmware into the DSP memories; installs the DSP completion handlers; and configures the audio codec over I²C. It then calls the ROM's DSP1 beep start (`0x80061988`) and stop (`0x80061A4E`) routines. Those routines write the descriptor at `0xFE340000`, use the DSP1 command doorbell at `0xFE3FFD38`, and process completion events through the ROM-installed handlers.
 
 This is a direct hardware test with no runtime model detection. Use B on legacy-clock units and N on DSP-beep units; do not hold both keys at once.
 
