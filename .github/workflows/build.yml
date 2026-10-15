@@ -40,7 +40,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: codex-build
-          path: build.zip
+          path: build/ja
           if-no-files-found: error
 
       - name: Publish

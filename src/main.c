@@ -26,7 +26,7 @@ typedef int (*rom_text_function)(const char *text, int unknown);
 enum panel_target { PANEL_MAIN, PANEL_SUB };
 enum render_mode { MODE_SYSTEM, MODE_BARE };
 
-static void draw_main_paint(uint16_t x, uint16_t y, int bare)
+static void draw_main_paint(uint16_t x, uint16_t y, uint16_t accel_x, uint16_t accel_y, int bare)
 {
 	struct font *font = get_font();
 	if (bare) {
@@ -44,9 +44,10 @@ static void draw_main_paint(uint16_t x, uint16_t y, int bare)
 	set_pen(create_rgb16(255, 120, 0)); draw_circle(300, 130, 52);
 	set_pen(create_rgb16(100, 255, 100)); draw_line(20, 270, 500, 190);
 	set_pen(create_rgb16(255, 40, 220)); draw_rect(x, y, 16, 16);
+	set_pen(create_rgb16(255, 255, 0)); draw_rect(accel_x, accel_y, 16, 16);
 	set_pen(create_rgb16(255, 255, 255));
 	render_text(8, SCREEN_HEIGHT - font->height - 8,
-		"B: sub pattern  T: I2C probe  C: reset  EXE: ROM compare");
+		"B pattern PgUp/Dn size C clear T touch A accel-rest EXE compare");
 	if (bare) lcdc_copy_vram(); else ROM_LCD_REFRESH();
 }
 
@@ -80,10 +81,13 @@ int main(void)
 {
 	enum render_mode mode = MODE_BARE;
 	uint16_t main_x = 250, main_y = 220, sub_x = 96, sub_y = 42;
-	uint8_t sub_pattern = 4;
-	uint8_t checker_size = 8;
-	int sub_blank = 0, accel_ready = 0;
+	uint8_t sub_pattern = 5;
+	uint8_t checker_size = 16;
+	int sub_blank = 0, accel_ready = 0, accel_enabled = 0, touch_enabled = 0;
 	uint16_t touch_poll_divider = 0;
+	uint8_t i2c_poll_divider = 0, accel_poll_divider = 0;
+	int accel_rest_x = 0, accel_rest_y = 0;
+	int accel_x = 256, accel_y = 152, accel_vx = 0, accel_vy = 0;
 	int main_dirty = 1, sub_dirty = 1;
 	struct touch_adc_sample touch;
 	struct touch_i2c_sample i2c_touch;
@@ -112,20 +116,14 @@ int main(void)
 		}
 		if (get_key_pressed(KEY_PAGE_UP) && checker_size < 32) { checker_size <<= 1; sub_blank = 0; sub_dirty = 1; }
 		if (get_key_pressed(KEY_PAGE_DOWN) && checker_size > 2) { checker_size >>= 1; sub_blank = 0; sub_dirty = 1; }
-		if (get_key_pressed(KEY_CHAR_T) && touch_i2c_read(&i2c_touch)) {
-			main_x = (uint16_t)((uint32_t)i2c_touch.x * (SCREEN_WIDTH - 16u) / 4096u);
-			main_y = (uint16_t)((uint32_t)i2c_touch.y * (SCREEN_HEIGHT - 16u) / 4096u);
-			main_dirty = 1;
-		}
+		if (get_key_pressed(KEY_CHAR_T)) touch_enabled = !touch_enabled;
 		if (get_key_pressed(KEY_CHAR_A)) {
 			if (!accel_ready) accel_ready = accelerometer_init();
 			if (accel_ready && accelerometer_read(&accelerometer)) {
-				int ax = 256 + (int)accelerometer.x * 2;
-				int ay = 152 - (int)accelerometer.y * 2;
-				if (ax < 0) ax = 0; if (ax > SCREEN_WIDTH - 16) ax = SCREEN_WIDTH - 16;
-				if (ay < 0) ay = 0; if (ay > SCREEN_HEIGHT - 16) ay = SCREEN_HEIGHT - 16;
-				main_x = (uint16_t)ax;
-				main_y = (uint16_t)ay;
+				accel_rest_x = accelerometer.x;
+				accel_rest_y = accelerometer.y;
+				accel_x = 256; accel_y = 152; accel_vx = 0; accel_vy = 0;
+				accel_enabled = 1;
 				main_dirty = 1;
 			}
 		}
@@ -140,7 +138,30 @@ int main(void)
 			uint16_t y = (uint16_t)((uint32_t)touch.channel_c * (SUB_LCDC_HEIGHT - 10u) / 1024u);
 			if (x != sub_x || y != sub_y) { sub_x = x; sub_y = y; sub_dirty = 1; }
 		}
-		if (main_dirty) { draw_main_paint(main_x, main_y, mode == MODE_BARE); main_dirty = 0; }
+		/* Full I2C sample sets are slow (12 two-byte reads). T enables a
+		 * periodic probe; rendering remains conditional on a new point. */
+		if (touch_enabled && ++i2c_poll_divider == 0 && touch_i2c_read(&i2c_touch)) {
+			int tx = ((int)i2c_touch.x - 0x50) * (SCREEN_WIDTH - 16) / (0xff5 - 0x50);
+			int ty = ((int)i2c_touch.y - 0x70) * (SCREEN_HEIGHT - 16) / (0xff1 - 0x70);
+			if (tx < 0) tx = 0; if (tx > SCREEN_WIDTH - 16) tx = SCREEN_WIDTH - 16;
+			if (ty < 0) ty = 0; if (ty > SCREEN_HEIGHT - 16) ty = SCREEN_HEIGHT - 16;
+			if (main_x != (uint16_t)tx || main_y != (uint16_t)ty) {
+				main_x = (uint16_t)tx; main_y = (uint16_t)ty; main_dirty = 1;
+			}
+		}
+		if (accel_enabled && ++accel_poll_divider == 0 && accelerometer_read(&accelerometer)) {
+			accel_vx += ((int)accelerometer.x - accel_rest_x) / 12;
+			accel_vy -= ((int)accelerometer.y - accel_rest_y) / 12;
+			if (accel_vx > 24) accel_vx = 24; if (accel_vx < -24) accel_vx = -24;
+			if (accel_vy > 24) accel_vy = 24; if (accel_vy < -24) accel_vy = -24;
+			accel_x += accel_vx; accel_y += accel_vy;
+			if (accel_x < 0) { accel_x = 0; accel_vx = -accel_vx; }
+			if (accel_x > SCREEN_WIDTH - 16) { accel_x = SCREEN_WIDTH - 16; accel_vx = -accel_vx; }
+			if (accel_y < 0) { accel_y = 0; accel_vy = -accel_vy; }
+			if (accel_y > SCREEN_HEIGHT - 16) { accel_y = SCREEN_HEIGHT - 16; accel_vy = -accel_vy; }
+			main_dirty = 1;
+		}
+		if (main_dirty) { draw_main_paint(main_x, main_y, (uint16_t)accel_x, (uint16_t)accel_y, mode == MODE_BARE); main_dirty = 0; }
 		if (sub_dirty) { draw_sub_paint(sub_x, sub_y, sub_pattern, checker_size, sub_blank); sub_dirty = 0; }
 	}
 }
