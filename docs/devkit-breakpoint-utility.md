@@ -9,6 +9,28 @@ It is not a Hollyhock app and doesn't use Hollyhock GUI or the ClassPad
 runtime. Its white-screen UI uses familiar EX-word `graphics/*` and
 `sh4a/input/keypad.h` APIs.
 
+## Why a breakpoint does not fire in the EX-word menu
+
+**BKPUT is an ordinary add-on, not a resident OS debugger.** Pressing
+Back or Power exits its main function and normally unloads its code/data.
+The program also explicitly calls `disarm_breakpoint()` on exit when
+armed. Therefore a breakpoint configured in BKPUT will **not trigger
+later in the main OS menu**. Leaving a DBR vector pointing into unloaded
+BKPUT code would be unsafe and could reboot or corrupt the running OS.
+
+Before debugging OS/menu code, establish whether UBC works at all in
+this add-on: keep the default local test function address, press **S**
+to arm, then **T** while BKPUT remains on screen. The latest UI will
+show `SELF-TEST: HIT RECORDED` if the exception callback increments its
+counter, otherwise `SELF-TEST: NO HIT RECORDED`. The latter does not
+unambiguously distinguish inaccessible UBC registers, missing exception
+routing, and mismatched instruction addresses.
+
+Supporting breakpoints across OS menu transitions requires a **separate
+resident handler with an OS-supported lifetime and exception integration**,
+not merely removing BKPUT's disarm-on-exit line. No such resident handler
+has been demonstrated safe on this EX-word model.
+
 ## Operation
 
 - Starts with **no breakpoint armed**. It draws a plain UI and waits.
