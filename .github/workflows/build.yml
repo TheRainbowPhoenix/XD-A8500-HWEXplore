@@ -25,11 +25,14 @@ jobs:
         run: |
           cd ..
           curl -sSfL https://github.com/MaxSignal/buildscripts/releases/download/Linux/devkitPro.tar.gz | tar -zxf -
+          export DEVKITPRO="$GITHUB_WORKSPACE/../devkitPro"
+          export DEVKITSH4="$DEVKITPRO/devkitSH4"
+          export PATH="$DEVKITPRO/tools/bin:$DEVKITSH4/bin:$PATH"
           git clone --depth 1 --branch codex/sub-lcd-touch-drivers https://github.com/TheRainbowPhoenix/libdataplus-ex.git
           cd libdataplus-ex
-          DEVKITPRO="$OLDPWD/devkitPro" DEVKITSH4="$DEVKITPRO/devkitSH4" PATH="$DEVKITPRO/tools/bin:$DEVKITSH4/bin:$PATH" make install
+          make install
           cd "$GITHUB_WORKSPACE"
-          DEVKITPRO="$OLDPWD/devkitPro" DEVKITSH4="$DEVKITPRO/devkitSH4" PATH="$DEVKITPRO/tools/bin:$DEVKITSH4/bin:$PATH" make
+          make
           zip -r build.zip build
 
       - name: Upload Codex branch build
