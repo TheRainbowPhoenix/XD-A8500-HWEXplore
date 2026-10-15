@@ -2,7 +2,7 @@
 
 ![](image.jpg)
 
-This repository is a skeleton for developing homebrews (addons) for CASIO EX-word DATAPLUS 5/6/7 with GitHub Actions build on tag push and manual dispatch. `src/main.c` in this repository shows `Hello, world!` in white text on black background, and exits on Power or Back key press. You can install your app to your EX-word device in the same way as [Gnuboy EX](https://brain.fandom.com/ja/wiki/Gnuboy_EX) by using [libexword](https://brain.fandom.com/ja/wiki/Libexword) tool. For local setup, install [devkitSH4](https://brain.fandom.com/ja/wiki/devkitSH4) compiler and invoke `make` to build in `build/ja/` and `build/cn/`. devkitSH4 automatically downloads [libdataplus](https://github.com/brijohn/libdataplus) during the installation process.
+This repository is a skeleton for developing homebrews (addons) for CASIO EX-word DATAPLUS 5/6/7 with GitHub Actions build on tag push and manual dispatch. `src/main.c` currently contains a legacy B-key buzzer demo, and exits on Power or Back key press. You can install your app to your EX-word device in the same way as [Gnuboy EX](https://brain.fandom.com/ja/wiki/Gnuboy_EX) by using [libexword](https://brain.fandom.com/ja/wiki/Libexword) tool. For local setup, install [devkitSH4](https://brain.fandom.com/ja/wiki/devkitSH4), install [libdataplus-ex](https://github.com/TheRainbowPhoenix/libdataplus-ex), and invoke `make` to build in `build/ja/` and `build/cn/`.
 
 - `html/`: Metadata HTML templates to be read by the EX-word system (must be in CRLF)
 - `src/`: C source files
