@@ -1,0 +1,71 @@
+# BKPUT — minimal SH4A breakpoint utility (EX-word devkitSH4)
+
+This is a **hardware-experimental** port of [SnailMath's Hollyhock 2
+Breakpoint Utility](https://github.com/SnailMath/hollyhock-2/tree/master/demos/breakpoint_util)
+to the original **devkitSH4 + original prebuilt libdataplus** used by
+EXplorer and previously working EX-word tools.
+
+It is not a Hollyhock app and doesn't use Hollyhock GUI or the ClassPad
+runtime. Its white-screen UI uses familiar EX-word `graphics/*` and
+`sh4a/input/keypad.h` APIs.
+
+## Operation
+
+- Starts with **no breakpoint armed**. It draws a plain UI and waits.
+- **S** installs the debug base register (DBR) handler and arms UBC channel 0
+  at a **fixed local test function** inside this app.
+- **T** executes that local function. If the debug exception works, the
+  handler disables channel 0, saves a minimal register snapshot, and
+  returns to the UI; **R0** and **PR** are displayed.
+- **D** disarms channel 0.
+- **Back / Power** disarms if this app considers it armed, then returns.
+
+The source includes a small SH assembler exception stub based on the
+Hollyhock sample's save/restore logic. Unlike Hollyhock's default debug
+text API, the exception path does **not call graphics functions**;
+it only copies registers and increments a hit counter. UI redrawing
+happens back in the ordinary input loop.
+
+## Critical hardware cautions
+
+- **UBC registers at 0xFF200000 etc., and DBR require privileged access.**
+  The stock EX-word firmware might reject these operations, instantly
+  crash/reboot, or route exceptions differently. We have not verified this
+  on the XD-A8500, so **S is dangerous**.
+- This is a *one-local-function* test on purpose: no arbitrary ROM/OS
+  breakpoint address entry, memory writes, or OS interrupt hooks.
+- **This implementation replaces DBR when armed and does not restore the
+  old DBR value after disarming.** Do not arm it on a device where another
+  debugger/debug infrastructure is installed or expected. It must never
+  be described as harmless to OS debugging state.
+- A hardware-triggered exception can occur with interrupt state, stack,
+  and register banking different from Hollyhock's ClassPad expectations.
+  The register handler is experimental; crash/reboot is possible.
+- Software deliberately writes UBC MMIO configuration registers. It does
+  not flash ROM or patch executable memory.
+
+### Suggested test order
+
+1. Install `BKPUT` alongside the existing known-working utilities.
+2. Launch it **without pressing S**. Verify the plain screen stays open
+   and Back returns normally. If even startup fails, stop: breakpoint
+   hardware cannot be the cause.
+3. Only if willing to risk an immediate reboot, launch it again, press
+   **S** to arm the test and then **T**. Record whether the screen shows
+   a capture, hangs, or reboots.
+4. Do not attempt ROM/OS breakpoints until the local test has been
+   demonstrated working safely.
+
+The GitHub Actions workflow builds JA/CN installable `BKPUT` packages.
+Passing the CI build **does not validate privileged UBC access or the
+exception handler on a physical EX-word**.
+
+## Installation
+
+Download `breakpoint-bkput-ja` from the
+[breakpoint workflow](https://github.com/TheRainbowPhoenix/XD-A8500-HWEXplore/actions/workflows/breakpoint-devkit.yml),
+extract the `BKPUT` directory, and install with libexword-re using
+your existing authentication: `setpath mem:///` then `dict install BKPUT`.
+Do **not** use `dict reset`.
+
+Related reference: [EXplorer](https://github.com/brain-hackers/EXplorer).
