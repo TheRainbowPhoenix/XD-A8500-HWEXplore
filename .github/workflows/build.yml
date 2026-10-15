@@ -33,7 +33,7 @@ jobs:
         if: startsWith(github.ref, 'refs/heads/codex/')
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ replace(github.ref_name, '/', '-') }}-build
+          name: codex-build
           path: build.zip
           if-no-files-found: error
 
